@@ -1,0 +1,1 @@
+ALTER TABLE public.e_documents ADD COLUMN IF NOT EXISTS lines jsonb NOT NULL DEFAULT '[]'::jsonb;

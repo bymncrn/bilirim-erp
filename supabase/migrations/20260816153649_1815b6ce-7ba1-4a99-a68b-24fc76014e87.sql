@@ -1,0 +1,1 @@
+ALTER TABLE public.service_tickets ADD COLUMN IF NOT EXISTS lines jsonb NOT NULL DEFAULT '[]'::jsonb;

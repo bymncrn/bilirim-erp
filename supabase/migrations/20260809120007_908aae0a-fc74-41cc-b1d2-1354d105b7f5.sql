@@ -1,0 +1,3 @@
+ALTER TABLE public.cariler ADD COLUMN IF NOT EXISTS currency varchar NOT NULL DEFAULT 'TRY';
+ALTER TABLE public.quotes ADD COLUMN IF NOT EXISTS currency varchar NOT NULL DEFAULT 'TRY';
+ALTER TABLE public.e_documents ADD COLUMN IF NOT EXISTS currency varchar NOT NULL DEFAULT 'TRY';

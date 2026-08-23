@@ -1,0 +1,4 @@
+CREATE POLICY "Company can read own product images" ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'product-images' AND (storage.foldername(name))[1] = (public.current_company_id())::text);
+CREATE POLICY "Company can upload own product images" ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'product-images' AND (storage.foldername(name))[1] = (public.current_company_id())::text);
+CREATE POLICY "Company can update own product images" ON storage.objects FOR UPDATE TO authenticated USING (bucket_id = 'product-images' AND (storage.foldername(name))[1] = (public.current_company_id())::text) WITH CHECK (bucket_id = 'product-images' AND (storage.foldername(name))[1] = (public.current_company_id())::text);
+CREATE POLICY "Company can delete own product images" ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'product-images' AND (storage.foldername(name))[1] = (public.current_company_id())::text);
