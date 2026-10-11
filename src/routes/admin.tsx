@@ -1,6 +1,8 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useState } from "react";
-import { CheckCircle2, Loader2, RefreshCw, ShieldCheck, Ticket, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, Loader2, RefreshCw, ShieldCheck, Ticket, Trash2, XCircle } from "lucide-react";
+import { cancelCompanySubscription, deleteCompany, updateCompanyByAdmin } from "@/lib/admin-companies.functions";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -68,6 +70,8 @@ function SuperAdminPage() {
   const [extend, setExtend] = useState<Row | null>(null);
   const [credit, setCredit] = useState<Row | null>(null);
   const orders = usePendingOrders();
+  const cancelSub = useServerFn(cancelCompanySubscription);
+  const delCompany = useServerFn(deleteCompany);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -268,6 +272,44 @@ function SuperAdminPage() {
                         <Button size="sm" onClick={() => setCredit(r)}>
                           <Ticket className="mr-1.5 h-4 w-4" /> Kontör Yükle
                         </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={async () => {
+                            if (!confirm(`"${r.name}" üyeliği iptal edilsin mi? Modüller hemen kilitlenecek.`)) return;
+                            try {
+                              await cancelSub({ data: { companyId: r.id } });
+                              toast.success("Üyelik iptal edildi.");
+                              void load();
+                            } catch (e) {
+                              toast.error((e as Error).message);
+                            }
+                          }}
+                        >
+                          <Ban className="mr-1.5 h-4 w-4" /> Üyeliği İptal Et
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="destructive"
+                          onClick={async () => {
+                            const typed = prompt(
+                              `"${r.name}" ve TÜM verileri ile kullanıcıları kalıcı olarak silinecek. Onaylamak için firma adını yazın:`,
+                            );
+                            if (typed?.trim() !== r.name) {
+                              if (typed !== null) toast.error("Firma adı eşleşmedi, silme iptal edildi.");
+                              return;
+                            }
+                            try {
+                              await delCompany({ data: { companyId: r.id } });
+                              toast.success("Firma silindi.");
+                              void load();
+                            } catch (e) {
+                              toast.error((e as Error).message);
+                            }
+                          }}
+                        >
+                          <Trash2 className="mr-1.5 h-4 w-4" /> Firmayı Sil
+                        </Button>
                       </div>
                     </td>
                   </tr>
@@ -325,6 +367,7 @@ function ExtendDialog({
     new Date(base.getTime() + 30 * DAY).toISOString().slice(0, 10),
   );
   const [saving, setSaving] = useState(false);
+  const update = useServerFn(updateCompanyByAdmin);
 
   const applyDays = (value: string) => {
     setDays(value);
@@ -339,13 +382,15 @@ function ExtendDialog({
       return;
     }
     setSaving(true);
-    const { error } = await supabase
-      .from("companies")
-      .update({ subscription_ends_at: target.toISOString() })
-      .eq("id", row.id);
+    let error: Error | null = null;
+    try {
+      await update({ data: { companyId: row.id, subscriptionEndsAt: target.toISOString() } });
+    } catch (e) {
+      error = e as Error;
+    }
     setSaving(false);
     if (error) {
-      toast.error("Abonelik güncellenemedi.");
+      toast.error(`Abonelik güncellenemedi: ${error.message}`);
       return;
     }
     toast.success(`${row.name} aboneliği ${target.toLocaleDateString("tr-TR")} tarihine uzatıldı.`);
@@ -396,6 +441,7 @@ function CreditDialog({
 }) {
   const [amount, setAmount] = useState("100");
   const [saving, setSaving] = useState(false);
+  const update = useServerFn(updateCompanyByAdmin);
 
   const save = async () => {
     const n = Number(amount);
@@ -404,13 +450,17 @@ function CreditDialog({
       return;
     }
     setSaving(true);
-    const { error } = await supabase
-      .from("companies")
-      .update({ edoc_credits: Math.max(0, (row.edoc_credits ?? 0) + n) })
-      .eq("id", row.id);
+    let error: Error | null = null;
+    try {
+      await update({
+        data: { companyId: row.id, edocCredits: Math.max(0, (row.edoc_credits ?? 0) + Math.trunc(n)) },
+      });
+    } catch (e) {
+      error = e as Error;
+    }
     setSaving(false);
     if (error) {
-      toast.error("Kontör yüklenemedi.");
+      toast.error(`Kontör yüklenemedi: ${error.message}`);
       return;
     }
     toast.success(`${row.name} hesabına ${n} kontör yüklendi.`);

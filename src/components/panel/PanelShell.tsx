@@ -13,6 +13,7 @@ import {
   LayoutGrid,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { UserCompanyBadge } from "@/components/auth/UserCompanyBadge";
 import { Button } from "@/components/ui/button";
 import { useCurrentStaff, usePanelState, setCurrentUser } from "@/lib/panel-store";
 import { usePermissions, type PermKey } from "@/lib/permissions";
@@ -205,6 +206,7 @@ export function PanelShell({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {actions}
+              <UserCompanyBadge />
               <Button
                 variant="outline"
                 size="icon"

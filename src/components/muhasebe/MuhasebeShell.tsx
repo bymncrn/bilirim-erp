@@ -13,6 +13,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { UserCompanyBadge } from "@/components/auth/UserCompanyBadge";
 import { Button } from "@/components/ui/button";
 
 export const MUHASEBE_NAV = [
@@ -144,7 +145,7 @@ export function MuhasebeShell({
                 <p className="truncate text-xs text-muted-foreground">{description}</p>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+            <div className="flex shrink-0 items-center gap-2">{actions}<UserCompanyBadge /></div>
           </div>
         </header>
         <main className="min-w-0 flex-1 px-4 py-6 sm:px-8 sm:py-8">{children}</main>

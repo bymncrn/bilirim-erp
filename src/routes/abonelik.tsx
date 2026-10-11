@@ -12,11 +12,12 @@ import {
 } from "@/components/ui/dialog";
 import { KvkkBadge, PdksPlanCards } from "@/components/pricing/PdksPlans";
 import { useCompany } from "@/lib/company-store";
+import { useAuth } from "@/hooks/use-auth";
+import { createSubscriptionOrder } from "@/lib/subscription-orders";
 import { useSubscriptionStatus } from "@/lib/subscription-status";
 import {
   MODULE_LABELS,
   PACKAGES,
-  setActivePackage,
   useActivePackageKey,
   type ModuleKey,
 } from "@/lib/subscription-store";
@@ -52,6 +53,24 @@ function SubscriptionPage() {
   const [pdksOpen, setPdksOpen] = useState(false);
   const [billing, setBilling] = useState<"monthly" | "yearly">("monthly");
   const navigate = useNavigate();
+  const { profile } = useAuth();
+  const [requested, setRequested] = useState(false);
+
+  async function requestPackage(p: (typeof PACKAGES)[number]) {
+    try {
+      await createSubscriptionOrder({
+        module: p.name,
+        plan: p.key,
+        period: "monthly",
+        amount: Number(p.price.replace(/[^0-9]/g, "")) || 0,
+        senderName: profile?.full_name || profile?.email || "",
+        companyName: company?.name ?? "",
+      });
+      setRequested(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Talep oluşturulamadı.");
+    }
+  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -170,10 +189,7 @@ function SubscriptionPage() {
                   className="mt-6 w-full"
                   variant={active && !sub.expired ? "outline" : "default"}
                   disabled={active && !sub.expired}
-                  onClick={() => {
-                    setActivePackage(p.key);
-                    toast.success(`${p.name} aktif edildi. Aboneliğiniz 30 gün uzatıldı.`);
-                  }}
+                  onClick={() => void requestPackage(p)}
                 >
                   {active ? (sub.expired ? "Aboneliği Yenile" : "Kullanımda") : "Bu Pakete Geç"}
                 </Button>
@@ -208,6 +224,24 @@ function SubscriptionPage() {
             </Button>
           </div>
         </section>
+
+        <Dialog open={requested} onOpenChange={setRequested}>
+          <DialogContent className="max-w-md text-center">
+            <DialogHeader>
+              <div className="mx-auto mb-2 flex h-14 w-14 items-center justify-center rounded-full bg-primary/10">
+                <Check className="h-7 w-7 text-primary" />
+              </div>
+              <DialogTitle className="text-center">Talebiniz başarıyla alındı</DialogTitle>
+              <DialogDescription className="text-center text-sm leading-relaxed">
+                Lütfen paket tutarını{" "}
+                <span className="font-mono font-bold text-foreground">TR12 3456 7890 0000 0000 0000 00</span>{" "}
+                numaralı <span className="font-semibold text-foreground">Bilirim Teknoloji</span> IBAN
+                hesabına gönderiniz. Ödemeniz onaylandığında paketiniz aktif edilecektir.
+              </DialogDescription>
+            </DialogHeader>
+            <Button className="mt-2 w-full" onClick={() => setRequested(false)}>Tamam</Button>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={pdksOpen} onOpenChange={setPdksOpen}>
           <DialogContent className="max-w-4xl">

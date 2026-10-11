@@ -12,6 +12,7 @@ import {
   ArrowLeft,
 } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { UserCompanyBadge } from "@/components/auth/UserCompanyBadge";
 import { Button } from "@/components/ui/button";
 import { useActivePackage } from "@/lib/subscription-store";
 import { useSubscriptionStatus } from "@/lib/subscription-status";
@@ -167,7 +168,7 @@ export function PdksShell({
                 <p className="truncate text-xs text-muted-foreground">{description}</p>
               )}
             </div>
-            <div className="flex shrink-0 items-center gap-2">{actions}</div>
+            <div className="flex shrink-0 items-center gap-2">{actions}<UserCompanyBadge /></div>
           </div>
         </header>
         <main className="flex-1 px-4 py-6 sm:px-8 sm:py-8">{children}</main>

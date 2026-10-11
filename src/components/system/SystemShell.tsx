@@ -1,6 +1,7 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { ArrowLeft, Menu, Moon, ScrollText, Settings, ShieldCheck, Sun, X } from "lucide-react";
 import { useState, type ReactNode } from "react";
+import { UserCompanyBadge } from "@/components/auth/UserCompanyBadge";
 import { Button } from "@/components/ui/button";
 import { useTheme, toggleTheme } from "@/lib/theme-store";
 import bilirimLogo from "@/assets/bilirim-logo.png.asset.json";
@@ -116,6 +117,7 @@ export function SystemShell({
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {actions}
+              <UserCompanyBadge />
               <Button
                 variant="outline"
                 size="icon"
