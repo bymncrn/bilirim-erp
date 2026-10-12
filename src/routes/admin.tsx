@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
 import { useServerFn } from "@tanstack/react-start";
 import { useCallback, useEffect, useState } from "react";
-import { Ban, CheckCircle2, Loader2, RefreshCw, ShieldCheck, Ticket, Trash2, XCircle } from "lucide-react";
+import { Ban, CheckCircle2, Loader2, LogOut, RefreshCw, ShieldCheck, Ticket, Trash2, XCircle } from "lucide-react";
 import { cancelCompanySubscription, deleteCompany, updateCompanyByAdmin } from "@/lib/admin-companies.functions";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   approveSubscriptionOrder,
   rejectSubscriptionOrder,
@@ -62,13 +72,72 @@ function daysLeft(row: Row) {
   return Math.max(0, Math.ceil(diff / DAY));
 }
 
+/** Returns a fresh, valid access token (refreshing if needed) or null. */
+async function freshAuthHeaders(): Promise<Record<string, string> | null> {
+  let { data } = await supabase.auth.getSession();
+  let session = data.session;
+  const exp = session?.expires_at ? session.expires_at * 1000 : 0;
+  if (!session || exp - Date.now() < 60_000) {
+    const r = await supabase.auth.refreshSession();
+    session = r.data.session;
+  }
+  const token = session?.access_token;
+  if (!token || token.split(".").length !== 3) return null;
+  return { Authorization: `Bearer ${token}` };
+}
+
+function AdminLogin({ onDone }: { onDone: () => void }) {
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setBusy(true);
+    const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+    setBusy(false);
+    if (error) {
+      toast.error("Giriş başarısız: e-posta veya şifre hatalı.");
+      return;
+    }
+    onDone();
+  };
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-5">
+      <form
+        onSubmit={(e) => void submit(e)}
+        className="w-full max-w-sm space-y-4 rounded-2xl border border-border bg-card p-8 shadow-sm"
+      >
+        <div className="flex items-center gap-2">
+          <ShieldCheck className="h-6 w-6 text-primary" />
+          <h1 className="text-lg font-bold text-foreground">Süper Admin Girişi</h1>
+        </div>
+        <div className="space-y-1.5">
+          <Label>E-posta</Label>
+          <Input type="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+        </div>
+        <div className="space-y-1.5">
+          <Label>Şifre</Label>
+          <Input type="password" required value={password} onChange={(e) => setPassword(e.target.value)} />
+        </div>
+        <Button type="submit" className="w-full" disabled={busy}>
+          {busy && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Giriş Yap
+        </Button>
+      </form>
+    </div>
+  );
+}
+
 function SuperAdminPage() {
   const navigate = useNavigate();
   const [allowed, setAllowed] = useState<boolean | null>(null);
+  const [needLogin, setNeedLogin] = useState(false);
+  const [authTick, setAuthTick] = useState(0);
   const [rows, setRows] = useState<Row[]>([]);
   const [loading, setLoading] = useState(true);
   const [extend, setExtend] = useState<Row | null>(null);
   const [credit, setCredit] = useState<Row | null>(null);
+  const [toDelete, setToDelete] = useState<Row | null>(null);
+  const [deleting, setDeleting] = useState(false);
   const orders = usePendingOrders();
   const cancelSub = useServerFn(cancelCompanySubscription);
   const delCompany = useServerFn(deleteCompany);
@@ -88,22 +157,19 @@ function SuperAdminPage() {
     let active = true;
     void (async () => {
       const { data: auth } = await supabase.auth.getUser();
+      if (!active) return;
       if (!auth.user) {
-        if (active) {
-          setAllowed(false);
-          void navigate({ to: "/login", replace: true });
-        }
+        setAllowed(false);
+        setNeedLogin(true);
         return;
       }
+      setNeedLogin(false);
       const { data: superAdmin } = await supabase.rpc("is_super_admin", {
         _user_id: auth.user.id,
       });
-      const data = Boolean(superAdmin);
       if (!active) return;
-      if (!data) {
+      if (!superAdmin) {
         setAllowed(false);
-        toast.error("Bu sayfaya erişim yetkiniz bulunmuyor.");
-        void navigate({ to: "/login", replace: true });
         return;
       }
       setAllowed(true);
@@ -112,7 +178,50 @@ function SuperAdminPage() {
     return () => {
       active = false;
     };
-  }, [navigate, load]);
+  }, [load, authTick]);
+
+  const logout = async () => {
+    await supabase.auth.signOut();
+    toast.success("Çıkış yapıldı.");
+    setAllowed(null);
+    setRows([]);
+    setAuthTick((t) => t + 1);
+  };
+
+  /** Calls a protected server action with a fresh token; asks to sign in if missing. */
+  const authed = async <T,>(fn: (headers: Record<string, string>) => Promise<T>) => {
+    const headers = await freshAuthHeaders();
+    if (!headers) {
+      toast.error("Oturumunuz sona erdi. Lütfen tekrar giriş yapın.");
+      setAllowed(false);
+      setNeedLogin(true);
+      throw new Error("Oturum yok");
+    }
+    return fn(headers);
+  };
+
+  if (needLogin) return <AdminLogin onDone={() => setAuthTick((t) => t + 1)} />;
+
+  if (allowed === false) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background px-5">
+        <div className="max-w-md space-y-4 rounded-2xl border border-border bg-card p-8 text-center">
+          <h1 className="text-lg font-bold text-foreground">Erişim engellendi</h1>
+          <p className="text-sm text-muted-foreground">
+            Bu hesap Süper Admin yetkisine sahip değil.
+          </p>
+          <div className="flex justify-center gap-2">
+            <Button variant="outline" onClick={() => void navigate({ to: "/" })}>
+              Ana Sayfa
+            </Button>
+            <Button onClick={() => void logout()}>
+              <LogOut className="mr-2 h-4 w-4" /> Farklı Hesapla Giriş
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (allowed !== true) {
     return (
@@ -138,6 +247,9 @@ function SuperAdminPage() {
           <Button variant="outline" onClick={() => void load()} disabled={loading}>
             <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
             Yenile
+          </Button>
+          <Button variant="outline" onClick={() => void logout()}>
+            <LogOut className="mr-2 h-4 w-4" /> Çıkış Yap
           </Button>
         </div>
       </header>
@@ -278,36 +390,19 @@ function SuperAdminPage() {
                           onClick={async () => {
                             if (!confirm(`"${r.name}" üyeliği iptal edilsin mi? Modüller hemen kilitlenecek.`)) return;
                             try {
-                              await cancelSub({ data: { companyId: r.id } });
+                              await authed((headers) =>
+                                cancelSub({ data: { companyId: r.id }, headers }),
+                              );
                               toast.success("Üyelik iptal edildi.");
                               void load();
                             } catch (e) {
-                              toast.error((e as Error).message);
+                              if ((e as Error).message !== "Oturum yok") toast.error((e as Error).message);
                             }
                           }}
                         >
                           <Ban className="mr-1.5 h-4 w-4" /> Üyeliği İptal Et
                         </Button>
-                        <Button
-                          size="sm"
-                          variant="destructive"
-                          onClick={async () => {
-                            const typed = prompt(
-                              `"${r.name}" ve TÜM verileri ile kullanıcıları kalıcı olarak silinecek. Onaylamak için firma adını yazın:`,
-                            );
-                            if (typed?.trim() !== r.name) {
-                              if (typed !== null) toast.error("Firma adı eşleşmedi, silme iptal edildi.");
-                              return;
-                            }
-                            try {
-                              await delCompany({ data: { companyId: r.id } });
-                              toast.success("Firma silindi.");
-                              void load();
-                            } catch (e) {
-                              toast.error((e as Error).message);
-                            }
-                          }}
-                        >
+                        <Button size="sm" variant="destructive" onClick={() => setToDelete(r)}>
                           <Trash2 className="mr-1.5 h-4 w-4" /> Firmayı Sil
                         </Button>
                       </div>
@@ -326,6 +421,44 @@ function SuperAdminPage() {
           </table>
         </div>
       </main>
+
+      <AlertDialog open={!!toDelete} onOpenChange={(o) => !o && !deleting && setToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Firmayı Sil</AlertDialogTitle>
+            <AlertDialogDescription>
+              {toDelete?.name} firmasını silmek üzeresiniz. Emin misiniz?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>İptal</AlertDialogCancel>
+            <AlertDialogAction
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              onClick={(e) => {
+                e.preventDefault();
+                const r = toDelete;
+                if (!r) return;
+                void (async () => {
+                  setDeleting(true);
+                  try {
+                    await authed((headers) => delCompany({ data: { companyId: r.id }, headers }));
+                    toast.success("Firma silindi.");
+                    setToDelete(null);
+                    void load();
+                  } catch (err) {
+                    if ((err as Error).message !== "Oturum yok") toast.error((err as Error).message);
+                  } finally {
+                    setDeleting(false);
+                  }
+                })();
+              }}
+            >
+              {deleting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}Evet, Sil
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {extend && (
         <ExtendDialog
@@ -384,7 +517,9 @@ function ExtendDialog({
     setSaving(true);
     let error: Error | null = null;
     try {
-      await update({ data: { companyId: row.id, subscriptionEndsAt: target.toISOString() } });
+      const headers = await freshAuthHeaders();
+      if (!headers) throw new Error("Oturumunuz sona erdi, tekrar giriş yapın.");
+      await update({ data: { companyId: row.id, subscriptionEndsAt: target.toISOString() }, headers });
     } catch (e) {
       error = e as Error;
     }
@@ -452,7 +587,10 @@ function CreditDialog({
     setSaving(true);
     let error: Error | null = null;
     try {
+      const headers = await freshAuthHeaders();
+      if (!headers) throw new Error("Oturumunuz sona erdi, tekrar giriş yapın.");
       await update({
+        headers,
         data: { companyId: row.id, edocCredits: Math.max(0, (row.edoc_credits ?? 0) + Math.trunc(n)) },
       });
     } catch (e) {
